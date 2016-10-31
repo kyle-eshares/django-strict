@@ -1,18 +1,57 @@
 from __future__ import unicode_literals
 
 from django.db import models
-from django.db.models import Manager, Model
+from django.db.models import Manager, Model, Prefetch
 from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor  # noqa
 from django.db.models.query import QuerySet
 
+# # # # # # # #
+# Exceptions  #
+# # # # # # # #
 
-class RelationNotLoaded(Exception):
-    pass
+class MessageException(object):
+    default_message = None
+
+    def __init__(self):
+        self.message = self.default_message
+
+
+class GetItemAttrUndefined(MessageException, AttributeError):
+    default_message = (
+        'Cannot get element by index from queryset. '
+        'Explicity cast to list. [See Guide #2.4]'
+    )
+
+
+class PrefetchAttrUndefined(MessageException, TypeError):
+    default_message = 'Prefetch object must define `to_attr`. [See Guide #3.2]'
+
+
+class PrefetchExpected(MessageException, TypeError):
+    default_message = 'Expected Prefetch object. [See Guide #3.1]'
+
+
+class RelationNotLoaded(AttributeError):
+
+    def __init__(self, field_name):
+        self.message = (
+            'Relation `{field_name}` not loaded. '
+            'Use `select_related` or `fetch_{field_name}`. '
+            '[See Guide #1.1]'.format(field_name=field_name)
+        )
 
 
 class RemovedAttributeError(AttributeError):
     """ StrictQuerySets do not have implicit evaluation """
-    pass
+    def __init__(self, reference):
+        self.message = (
+            'Removed to prevent queryset caching. '
+            '[See Guide #{}]'.format(reference)
+        )
+
+# # # # # # # # #
+# Custom Field  #
+# # # # # # # # #
 
 
 class StrictForwardManyToOne(ForwardManyToOneDescriptor):
@@ -20,10 +59,7 @@ class StrictForwardManyToOne(ForwardManyToOneDescriptor):
         try:
             return getattr(instance, self.cache_name)
         except AttributeError:
-            raise RelationNotLoaded(
-                'Relation `{rel}` not loaded. Use `select_related` or '
-                '`fetch_{rel}`'.format(rel=self.field.name)
-            )
+            raise RelationNotLoaded(field_name=self.field.name)
 
     def explicit_get(self, instance, cls=None):
         return super(StrictForwardManyToOne, self).__get__(instance, cls)
@@ -44,23 +80,26 @@ class StrictForeignKey(models.ForeignKey):
 class StrictQuerySet(QuerySet):
 
     def __repr__(self):
-        return '<StrictQuerySet: {}>'.format('too strict to see inside!')
+        return '<StrictQuerySet: {}>'.format(self.__class__.__name__)
 
     def __iter__(self):
-        raise RemovedAttributeError('Removed to prevent queryset caching.')
+        raise RemovedAttributeError(reference='2.1')
 
     def __len__(self):
-        raise RemovedAttributeError()
+        raise RemovedAttributeError(reference='2.2')
 
     def __bool__(self):
-        raise RemovedAttributeError()
+        raise RemovedAttributeError(reference='2.3')
 
     def __getitem__(self, key):
         if isinstance(key, slice):
             return super(StrictQuerySet, self).__getitem__(key)
         else:
-            raise RemovedAttributeError()
+            raise GetItemAttrUndefined()
 
+    # # # # # # # # # # # #
+    # Overridden Methods  #
+    # # # # # # # # # # # #
     def first(self):
         """Reimplemented to avoid a call to __iter__"""
         try:
@@ -76,6 +115,14 @@ class StrictQuerySet(QuerySet):
             return next((qs[:1]).iterator())
         except StopIteration:
             return None
+
+    def prefetch_related(self, *lookups):
+        for lookup in lookups:
+            if not isinstance(lookup, Prefetch):
+                raise PrefetchExpected()
+            if lookup.to_attr is not None:
+                raise PrefetchAttrUndefined()
+        return super(StrictQuerySet, self).prefetch_related(*lookups)
 
     # # # # # # # # #
     # Added Methods #
