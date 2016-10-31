@@ -4,6 +4,7 @@ from django.db import connection
 import pytest
 
 from django.conf import settings
+from django.db.models import Prefetch
 
 
 def func(x):
@@ -96,3 +97,13 @@ def test_queryset_methods2(data):
     assert len(connection.queries) - base_queries == 1
     book_qs.to_list()
     assert len(connection.queries) - base_queries == 2
+
+
+@pytest.mark.django_db
+def test_queryset_methods2(data):
+    prefetch = Prefetch('books', to_attr='prefetched_books')
+    author_qs = Author.objects.prefetch_related(prefetch).all()
+    author_list = author_qs.to_list()
+
+    for author in author_list:
+        assert len(author.prefetched_books) == 2

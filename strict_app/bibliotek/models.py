@@ -2,8 +2,10 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.db.models import Manager, Model, Prefetch
-from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor  # noqa
-from django.db.models.query import QuerySet
+from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor, \
+    ReverseManyToOneDescriptor, create_reverse_many_to_one_manager
+from django.db.models.query import QuerySet, prefetch_related_objects
+from django.utils.functional import cached_property
 
 # # # # # # # #
 # Exceptions  #
@@ -65,7 +67,46 @@ class StrictForwardManyToOne(ForwardManyToOneDescriptor):
         return super(StrictForwardManyToOne, self).__get__(instance, cls)
 
 
+class StrictReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
+    @cached_property
+    def related_manager_cls(self):
+        related_model = self.rel.related_model
+
+        RelatedManager = create_reverse_many_to_one_manager(
+            related_model._default_manager.__class__,
+            self.rel,
+        )
+
+        class StrictRelatedManager(RelatedManager):
+            def get_prefetch_queryset(self, instances, queryset=None):
+                """Reimplemented to avoid a call to __iter__"""
+                if queryset is None:
+                    queryset = super(RelatedManager, self).get_queryset()
+
+                queryset._add_hints(instance=instances[0])
+                queryset = queryset.using(queryset._db or self._db)
+
+                rel_obj_attr = self.field.get_local_related_value
+                instance_attr = self.field.get_foreign_related_value
+                instances_dict = {instance_attr(inst): inst for inst in
+                                  instances}
+                query = {'%s__in' % self.field.name: instances}
+                queryset = queryset.filter(**query)
+
+                # Since we just bypassed this class' get_queryset(), we must manage
+                # the reverse relation manually.
+                result = queryset.to_list()
+                for rel_obj in result:
+                    instance = instances_dict[rel_obj_attr(rel_obj)]
+                    setattr(rel_obj, self.field.name, instance)
+                cache_name = self.field.related_query_name()
+                return result, rel_obj_attr, instance_attr, False, cache_name
+
+        return StrictRelatedManager
+
+
 class StrictForeignKey(models.ForeignKey):
+    related_accessor_class = StrictReverseManyToOneDescriptor
 
     def contribute_to_class(self, cls, name, **kwargs):
         super(StrictForeignKey, self).contribute_to_class(cls, name, **kwargs)
@@ -120,7 +161,7 @@ class StrictQuerySet(QuerySet):
         for lookup in lookups:
             if not isinstance(lookup, Prefetch):
                 raise PrefetchExpected()
-            if lookup.to_attr is not None:
+            if lookup.to_attr is None:
                 raise PrefetchAttrUndefined()
         return super(StrictQuerySet, self).prefetch_related(*lookups)
 
@@ -128,7 +169,12 @@ class StrictQuerySet(QuerySet):
     # Added Methods #
     # # # # # # # # #
     def to_container(self, container):
-        return container(self.iterator())
+        """Container """
+        result = container(self.iterator())
+        if self._prefetch_related_lookups:
+            prefetch_related_objects(result, *self._prefetch_related_lookups)
+
+        return result
 
     def to_list(self):
         return self.to_container(list)
