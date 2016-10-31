@@ -1,11 +1,14 @@
 from __future__ import unicode_literals
 
 from django.db import models
-from django.db.models import Manager, Model, Prefetch
-from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor, \
+from django.db.models import Prefetch
+from django.db.models.fields.related_descriptors import \
     ReverseManyToOneDescriptor, create_reverse_many_to_one_manager
 from django.db.models.query import QuerySet, prefetch_related_objects
 from django.utils.functional import cached_property
+from django.db.models import Manager, Model
+from django.db.models.fields.related_descriptors import \
+    ForwardManyToOneDescriptor, ReverseOneToOneDescriptor
 
 # # # # # # # #
 # Exceptions  #
@@ -105,6 +108,21 @@ class StrictReverseManyToOneDescriptor(ReverseManyToOneDescriptor):
         return StrictRelatedManager
 
 
+class StrictReverseOneToOne(ReverseOneToOneDescriptor):
+
+    def __get__(self, instance, instance_type=None):
+        try:
+            return getattr(instance, self.cache_name)
+        except AttributeError:
+            raise RelationNotLoaded(
+                'Relation `{rel}` not loaded. Use `select_related` or '
+                '`fetch_{rel}`'.format(rel=self.related.name)
+            )
+
+    def explicit_get(self, instance, instance_type=None):
+        return super(StrictReverseOneToOne, self).__get__(instance, instance_type)
+
+
 class StrictForeignKey(models.ForeignKey):
     related_accessor_class = StrictReverseManyToOneDescriptor
 
@@ -115,6 +133,17 @@ class StrictForeignKey(models.ForeignKey):
         setattr(cls, self.name, descriptor)
         #  Add a method so you don't always have to use select_related
         fetch_name = 'fetch_{rel}'.format(rel=self.name)
+        setattr(cls, fetch_name, lambda inst: descriptor.explicit_get(inst))
+
+
+class StrictOneToOneField(models.OneToOneField):
+
+    def contribute_to_related_class(self, cls, related):
+        super(StrictOneToOneField, self).contribute_to_related_class(cls, related)
+        descriptor = StrictReverseOneToOne(self.remote_field)
+        setattr(cls, self.remote_field.name, descriptor)
+        #  Add a method so you don't always have to use select_related
+        fetch_name = 'fetch_{rel}'.format(rel=self.remote_field.name)
         setattr(cls, fetch_name, lambda inst: descriptor.explicit_get(inst))
 
 
@@ -196,6 +225,11 @@ class Author(StrictModel):
     name = models.TextField()
 
 
+class ISBN(StrictModel):
+    digits = models.IntegerField()
+
+
 class Book(StrictModel):
     title = models.TextField()
     author = StrictForeignKey(Author, on_delete=models.PROTECT, related_name='books')  # noqa
+    isbn = StrictOneToOneField(ISBN, null=True, related_name='book')

@@ -1,4 +1,4 @@
-from bibliotek.models import Author, Book, RelationNotLoaded
+from bibliotek.models import Author, Book, ISBN, RelationNotLoaded
 from django.db import connection
 
 import pytest
@@ -7,14 +7,12 @@ from django.conf import settings
 from django.db.models import Prefetch
 
 
-def func(x):
-    return x + 1
-
 @pytest.fixture
 def data():
     author = Author.objects.create(name='Eric Ries')
     for book_name in ('The Lean Startup', 'putratS neaL ehT'):
-        Book.objects.create(author=author, title=book_name)
+        isbn = ISBN.objects.create(digits=13)
+        Book.objects.create(author=author, title=book_name, isbn=isbn)
 
 
 @pytest.mark.django_db
@@ -67,6 +65,16 @@ def test_foreign_key(data):
 
     book = Book.objects.select_related('author').first()
     book.author
+
+
+@pytest.mark.django_db
+def test_one_to_one(data):
+    isbn = ISBN.objects.first()
+    with pytest.raises(RelationNotLoaded):
+        isbn.book
+
+    isbn.fetch_book()
+    isbn.book
 
 
 @pytest.mark.django_db
