@@ -9,7 +9,7 @@ class RelationNotLoaded(Exception):
     pass
 
 
-class StrictAttributeError(Exception):
+class StrictAttributeError(AttributeError):
     """ StrictQuerySets do not have implicit evaluation """
     pass
 
