@@ -2,9 +2,15 @@ from __future__ import unicode_literals
 
 from django.db import models
 from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor  # noqa
+from django.db.models.query import QuerySet
 
 
 class RelationNotLoaded(Exception):
+    pass
+
+
+class StrictAttributeError(Exception):
+    """ StrictQuerySets do not have implicit evaluation """
     pass
 
 
@@ -32,6 +38,27 @@ class StrictForeignKey(models.ForeignKey):
         #  Add a method so you don't always have to use select_related
         fetch_name = 'fetch_{rel}'.format(rel=self.name)
         setattr(cls, fetch_name, lambda inst: descriptor.explicit_get(inst))
+
+
+class StrictQuerySet(QuerySet):
+
+    def __repr__(self):
+        return '<StrictQuerySet: {}>'.format('too strict to see inside!')
+
+    def __iter__(self):
+        raise StrictAttributeError()
+
+    def __len__(self):
+        raise StrictAttributeError()
+
+    def __bool__(self):
+        raise StrictAttributeError()
+
+    def __getitem__(self, k):
+        raise StrictAttributeError()
+
+    def to_list(self):
+        return list(self.iterator())
 
 
 # Create your models here.
