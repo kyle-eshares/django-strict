@@ -41,4 +41,4 @@ class Author(models.Model):
 
 class Book(models.Model):
     title = models.TextField()
-    author = StrictForeignKey(Author, on_delete=models.PROTECT, related_name='books')
+    author = StrictForeignKey(Author, on_delete=models.PROTECT, related_name='books')  # noqa
