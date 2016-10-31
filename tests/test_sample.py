@@ -3,6 +3,9 @@ from django.db import connection
 
 import pytest
 
+from django.conf import settings
+
+
 def func(x):
     return x + 1
 
@@ -47,7 +50,8 @@ def test_queryset_methods(data):
 
 
 @pytest.mark.django_db
-def test_queryset_methods(data):
+def test_queryset_methods2(data):
+    settings.DEBUG = True
     book_qs = Book.objects.all()
 
     assert len(connection.queries) == 0

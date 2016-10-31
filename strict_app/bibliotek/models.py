@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 from django.db import models
+from django.db.models import Manager, Model
 from django.db.models.fields.related_descriptors import ForwardManyToOneDescriptor  # noqa
 from django.db.models.query import QuerySet
 
@@ -54,18 +55,43 @@ class StrictQuerySet(QuerySet):
     def __bool__(self):
         raise StrictAttributeError()
 
-    def __getitem__(self, k):
-        raise StrictAttributeError()
+    # def __getitem__(self, k):
+    #     raise StrictAttributeError()
+
+    def first(self):
+        """Reimplemented to avoid a call to __iter__"""
+        try:
+            return next(((self if self.ordered else self.order_by('pk'))[:1]).iterator())  # noqa
+        except StopIteration:
+            return None
+
+    def last(self):
+        """Reimplemented to avoid a call to __iter__"""
+        try:
+            return next(((self.reverse() if self.ordered else self.order_by('-pk'))[:1]).iterator())  # noqa
+        except StopIteration:
+            return None
 
     def to_list(self):
         return list(self.iterator())
 
 
+class StrictManager(Manager):
+    _queryset_class = StrictQuerySet
+
+
+class StrictModel(Model):
+    objects = StrictManager()
+
+    class Meta:
+        abstract = True
+
+
 # Create your models here.
-class Author(models.Model):
+class Author(StrictModel):
     name = models.TextField()
 
 
-class Book(models.Model):
+class Book(StrictModel):
     title = models.TextField()
     author = StrictForeignKey(Author, on_delete=models.PROTECT, related_name='books')  # noqa
