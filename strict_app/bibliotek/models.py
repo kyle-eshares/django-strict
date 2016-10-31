@@ -10,7 +10,7 @@ class RelationNotLoaded(Exception):
     pass
 
 
-class StrictAttributeError(AttributeError):
+class RemovedAttributeError(AttributeError):
     """ StrictQuerySets do not have implicit evaluation """
     pass
 
@@ -47,21 +47,28 @@ class StrictQuerySet(QuerySet):
         return '<StrictQuerySet: {}>'.format('too strict to see inside!')
 
     def __iter__(self):
-        raise StrictAttributeError()
+        raise RemovedAttributeError('Removed to prevent queryset caching.')
 
     def __len__(self):
-        raise StrictAttributeError()
+        raise RemovedAttributeError()
 
     def __bool__(self):
-        raise StrictAttributeError()
+        raise RemovedAttributeError()
 
-    # def __getitem__(self, k):
-    #     raise StrictAttributeError()
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            return super(StrictQuerySet, self).__getitem__(key)
+        else:
+            raise RemovedAttributeError()
 
+    # # # # # # # # #
+    # Added Methods #
+    # # # # # # # # #
     def first(self):
         """Reimplemented to avoid a call to __iter__"""
         try:
-            return next(((self if self.ordered else self.order_by('pk'))[:1]).iterator())  # noqa
+            qs = self if self.ordered else self.order_by('pk')
+            return next(qs[:1].iterator())  # noqa
         except StopIteration:
             return None
 
@@ -72,8 +79,14 @@ class StrictQuerySet(QuerySet):
         except StopIteration:
             return None
 
+    # # # # # # # # #
+    # Added Methods #
+    # # # # # # # # #
+    def to_container(self, container):
+        return container(self.iterator())
+
     def to_list(self):
-        return list(self.iterator())
+        return self.to_container(list)
 
 
 class StrictManager(Manager):
