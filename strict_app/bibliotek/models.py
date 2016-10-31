@@ -61,21 +61,19 @@ class StrictQuerySet(QuerySet):
         else:
             raise RemovedAttributeError()
 
-    # # # # # # # # #
-    # Added Methods #
-    # # # # # # # # #
     def first(self):
         """Reimplemented to avoid a call to __iter__"""
         try:
             qs = self if self.ordered else self.order_by('pk')
-            return next(qs[:1].iterator())  # noqa
+            return next(qs[:1].iterator())
         except StopIteration:
             return None
 
     def last(self):
         """Reimplemented to avoid a call to __iter__"""
         try:
-            return next(((self.reverse() if self.ordered else self.order_by('-pk'))[:1]).iterator())  # noqa
+            qs = self.reverse() if self.ordered else self.order_by('-pk')
+            return next((qs[:1]).iterator())
         except StopIteration:
             return None
 
