@@ -138,6 +138,15 @@ class StrictForeignKey(models.ForeignKey):
 
 class StrictOneToOneField(models.OneToOneField):
 
+    def contribute_to_class(self, cls, name, **kwargs):
+        super(StrictOneToOneField, self).contribute_to_class(cls, name, **kwargs)
+        #  Override the descriptor defined by ForeignObject
+        descriptor = StrictForwardManyToOne(self)
+        setattr(cls, self.name, descriptor)
+        #  Add a method so you don't always have to use select_related
+        fetch_name = 'fetch_{rel}'.format(rel=self.name)
+        setattr(cls, fetch_name, lambda inst: descriptor.explicit_get(inst))
+
     def contribute_to_related_class(self, cls, related):
         super(StrictOneToOneField, self).contribute_to_related_class(cls, related)
         descriptor = StrictReverseOneToOne(self.remote_field)

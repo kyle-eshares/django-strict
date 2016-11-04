@@ -1,5 +1,6 @@
 from bibliotek.models import Author, Book, ISBN, RelationNotLoaded
 from django.db import connection
+from django.db.utils import IntegrityError
 
 import pytest
 
@@ -65,6 +66,19 @@ def test_foreign_key(data):
 
     book = Book.objects.select_related('author').first()
     book.author
+
+
+@pytest.mark.django_db
+def test_is_one_to_one(data):
+    isbn = ISBN.objects.first()
+    book1 = Book.objects.first()
+    book2 = Book.objects.last()
+
+    with pytest.raises(IntegrityError):
+        book1.isbn = isbn
+        book1.save()
+        book2.isbn = isbn
+        book2.save()
 
 
 @pytest.mark.django_db
