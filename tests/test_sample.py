@@ -78,6 +78,16 @@ def test_one_to_one(data):
 
 
 @pytest.mark.django_db
+def test_one_to_one_direct_access(data):
+    book = Book.objects.first()
+    with pytest.raises(RelationNotLoaded):
+        book.isbn
+
+    book.fetch_isbn()
+    book.isbn
+
+
+@pytest.mark.django_db
 def test_queryset_methods(data):
     books = Book.objects.all()
 
